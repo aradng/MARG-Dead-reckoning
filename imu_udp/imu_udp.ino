@@ -23,15 +23,15 @@
 * IN THE SOFTWARE.
 */
 
-#include "mpu6500.h"
+#include "mpu9250.h"
 #include "WiFi.h"
 #include "AsyncUDP.h"
 
-const char * ssid = "*******";
-const char * password = "*******";
+const char * ssid = "Arad-PC";
+const char * password = "pepegaking98";
 
 /* Mpu6500 object */
-bfs::Mpu6500 imu;
+bfs::Mpu9250 imu;
 AsyncUDP udp;
 IPAddress remote_IP(192, 168, 0, 2);
 #define UDP_PORT 1234
@@ -52,21 +52,25 @@ void setup() {
   Wire.begin();
   Wire.setClock(400000);
   /* I2C bus,  0x68 address */
-  imu.Config(&Wire, bfs::Mpu6500::I2C_ADDR_PRIM);
+  imu.Config(&Wire, bfs::Mpu9250::I2C_ADDR_PRIM);
   /* Initialize and configure IMU */
   if (!imu.Begin()) {
     Serial.println("Error initializing communication with IMU");
     while(1) {}
   }
   /* Set the sample rate divider */
-  if (!imu.ConfigSrd(0)) {
-    Serial.println("Error configured SRD");
+  if (!imu.sample_rate_divider(4)) {
+    Serial.println("Error in configuration of sample rate divider");
     while(1) {}
   }
+  if (imu.ConfigAccelRange(bfs::Mpu9250::ACCEL_RANGE_4G))
+    Serial.println("accel range set to ACCEL_RANGE_4G");
+  if (imu.ConfigGyroRange(bfs::Mpu9250::GYRO_RANGE_500DPS))
+    Serial.println("gyro range set to GYRO_RANGE_500DPS");
 }
 
-float accel[3], gyro[3];
-const int packet_div = 20;
+float accel[3], gyro[3], mag[3];
+const int packet_div = 4;
 int counter = 0;
 char data[packet_div][100];
 char buff[packet_div*100];
@@ -82,27 +86,19 @@ void loop() {
     gyro[0] = imu.gyro_x_radps();
     gyro[1] = imu.gyro_y_radps();
     gyro[2] = imu.gyro_z_radps();
-    sprintf(data[counter], "%f,%f,%f,%f,%f,%f\n", accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2]);
+    mag[0] = imu.mag_x_ut();
+    mag[1] = imu.mag_y_ut();
+    mag[2] = imu.mag_z_ut();
+    sprintf(data[counter], "%f,%f,%f,%f,%f,%f,%f,%f,%f\n", accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2], mag[0],mag[1],mag[2]);
     counter++;
-//    Serial.print("rd\t");
-//    Serial.print(counter);
-//    Serial.print("\t");
-//    Serial.print(data[counter-1]);
-//    Serial.print("\t");
-//    Serial.println(millis() - t);
   }
   t = millis();
   if (counter >= packet_div)
   {
-//     Serial.print("rc\t");
-//     Serial.print(counter);
      counter = 0;
      buff[0] = '\0';
      for (int i = 0; i < packet_div; i++)
       strcat(buff, data[i]);     
      udp.broadcastTo(buff, 1234);
-//     Serial.print("send_buffer\t");
-//     Serial.println(millis() - t);
   }
-//  delay(1);
 }
