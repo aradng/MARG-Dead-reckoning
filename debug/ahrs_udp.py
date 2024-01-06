@@ -10,16 +10,14 @@ import socket
 import numpy as np
 import pandas as pd
 from ahrs.filters import Mahony, Madgwick, EKF
-from sympy import capture
+import matplotlib.pyplot as plt
 
 logger = logging.getLogger(__name__)
 logger.setLevel(logging.DEBUG)
-f_handler = logging.FileHandler('ahrs_udp.log')
 
 filter = Mahony(frequency=200, k_P=1, k_I=0.3)
 # filter = Madgwick(frequency=200)
 # filter = EKF(frequency=200)
-print(filter.frequency, filter.Dt)
 
 # Define the UDP server's IP address and port to bind to
 server_ip = "0.0.0.0"  # Listen on all available network interfaces
@@ -31,76 +29,68 @@ udp_socket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 udp_socket.bind((server_ip, server_port))
 udp_socket.settimeout(0.5)
 
-print(f"UDP server is listening on {server_ip}:{server_port}")
 Q = np.array([1., 0., 0., 0.])
-try:
-    calib = pd.read_pickle('calib/calib.pkl')
-except:
-    ind =  (('gyro', 'x'),
-        ('gyro', 'y'),
-        ('gyro', 'z'),
-        ('accel', 'x'),
-        ('accel', 'y'),
-        ('accel', 'z'),
-        ('mag', 'x'),
-        ('mag', 'y'),
-        ('mag', 'z'))
-    print("No calibration file found")
-    calib = pd.Series(np.zeros(9), index=ind)
-
-try:
-    A = np.load('calib/hard_soft_iron.npy')
-except:
-    print("No hard soft iron calibration file found")
-    A = np.eye(3)
+calib = pd.read_csv('calib.csv', sep='\t', header=[0,1], index_col=[0,1]).T
+A = calib.loc['A']['mag'].to_numpy()
+b = calib.loc['b', 'b'].to_numpy()
+frames = 0
+ticks = pygame.time.get_ticks()
+import time
 
 def main():
-    capture = False
+    timings = pd.DataFrame()
     log_data = pd.DataFrame()
     log_accel = pd.DataFrame()
     V = pd.DataFrame(np.zeros(shape=(1,6)), columns = (('accel', 'x'), ('accel', 'y'), ('vel', 'x'), ('vel', 'y'), ('pos', 'x') , ('pos', 'y')))
-    global Q, calib, A
+    global Q, A, b, frames, ticks
     video_flags = OPENGL | DOUBLEBUF
     pygame.init()
     screen = pygame.display.set_mode((1280, 720), video_flags)
     pygame.display.set_caption("PyTeapot IMU orientation visualization")
     resizewin(1280, 720)
     init()
+    capture = False
     frames = 0
     ticks = pygame.time.get_ticks()
     while True:
+        current = {"frame_start": time.time()}
         event = pygame.event.poll()
         if event.type == QUIT or (event.type == KEYDOWN and event.key == K_ESCAPE):
             break
-        if event.type == KEYDOWN and event.key == K_c:
-            calib = calibrate(500)
-            print(calib)
-            calib.to_pickle('calib/calib.pkl')
-            # Q = np.array([1., 0., 0., 0.])
         if event.type == KEYDOWN and event.key == K_d:
             capture = ~capture
-        data = read_data() - calib
+        if event.type == KEYDOWN and event.key == K_r:
+            frames = 0
+            ticks = pygame.time.get_ticks()
+        data = read_data()
+        data -= b
+        t = time.time()
+        data['mag'] = (A @ data['mag'].T).T
         for k,v in data.iterrows():
-            data.loc[k, 'mag'] = A @ v['mag'].to_numpy()
             if filter.__class__.__name__ == 'EKF':
                 Q = filter.update(Q, gyr=v['gyro'].to_numpy(), acc=v['accel'].to_numpy(), mag=v['mag'].to_numpy())
             else:
                 Q = filter.updateMARG(Q, gyr=v['gyro'].to_numpy(), acc=v['accel'].to_numpy(), mag=v['mag'].to_numpy())
-                # Q = filter.updateIMU(Q, gyr=v['gyro'].to_numpy(), acc=v['accel'].to_numpy()) 
             rotation_matrix = quat_to_rot_mat(Q)
-            data.loc[k, 'accel'] = rotation_matrix @ v['accel'].to_numpy()
+            data.loc[k, 'accel'] = rotation_matrix @ v['accel']
 
+        current.update({"total": time.time() - current["frame_start"]})
         if capture:
             log_accel = pd.concat([log_accel, data['accel']])
             log_data = pd.concat([log_data, data])
         [w, nx, ny, nz] = Q
         rotation_matrix = quat_to_rot_mat(Q)
+        t = time.time()
         draw(w, nx, ny, nz, rotation_matrix @ v['accel'].to_numpy())
+        current.update({"draw": time.time() - t})
         pygame.display.flip()
         frames += 1 
-    log_data.to_pickle('debug/log_data.pkl')     
-    log_accel.to_pickle('debug/log_accel.pkl')
-    print("fps: %d" % ((frames*1000)/(pygame.time.get_ticks()-ticks)))
+        current.update({"frame_time": time.time() - current["frame_start"]})
+        timings = pd.concat([timings, pd.Series(current)], axis=1, ignore_index=True)
+    # log_data.to_pickle('debug/log_data.pkl')     
+    # log_accel.to_pickle('debug/log_accel.pkl')
+    timings *= 1000
+    timings.T.to_pickle('ahrs_timings.pkl')
 
 def read_data():
     data, client_address = udp_socket.recvfrom(3000)  # Adjust the buffer size as needed
@@ -126,18 +116,6 @@ def read_data():
     mag = pd.DataFrame(mag, columns=['x', 'y', 'z'])
     return pd.concat([gyro, accel, mag], keys=['gyro', 'accel', 'mag'], axis=1)
 
-def calibrate(n_samples=1000):
-    df = pd.DataFrame()
-    for i in range(n_samples):
-        df = pd.concat([df, read_data()], ignore_index=True)
-        if i % (n_samples/10) == 0:
-            print(f"calibrating gyro... {i}/{n_samples}")
-    print(pd.concat([df[:100].mean()['gyro'], df[:200].mean()['gyro'], df[:400].mean()['gyro'], df.mean()['gyro']], axis=1))
-    df = df.mean()
-    df['accel'] = np.array([0, 0, 0])
-    df['mag'] = np.array([26.372621, -24.870084, -80.033550])
-    return df
-
 def resizewin(width, height):
     """
     For resizing window
@@ -162,19 +140,21 @@ def init():
 
 
 def draw(w, nx, ny, nz, accel):
+    global frames, ticks
     glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
     glLoadIdentity()
     glTranslatef(0, 0.0, -7.0)
 
     drawText((-2.6, 1.8, 2), "MPU Quetrion Visulization", 18)
     drawText((-2.6, 1.6, 2), f"filter Module {str(filter.__class__).split('.')[2]}", 16)
-    drawText((-2.6, -2, 2), "Press Escape to Exit , C to Calibrate, D to capture", 16)
+    drawText((-2.6, -2, 2), "Press Escape to Exit , D to capture", 16)
 
     [yaw, pitch , roll] = quat_to_ypr([w, nx, ny, nz])
 
     # drawText((-2.6, -1.8, 2), "Yaw: %f, Pitch: %f, Roll: %f" %(yaw, pitch, roll), 16)
     drawText((-2.6, -1.8, 2), f"Q: {w:.3f}, x: {nx:.3f}, y: {ny:.3f}, z: {nz:.3f}", 16)
     drawText((-2.6, -1.9, 2), f"Q accel : x: {accel[0]:.3f}, y: {accel[1]:.3f}, z: {accel[2]:.3f}", 16)
+    drawText((2,1.9,2), f"fps: {frames / ((pygame.time.get_ticks() - ticks) / 1000.0):.2f}", 16)
     accel_s = np.array(['0', '0', '0'])
     for i in range(len(accel)):
         if accel[i] > 1:
@@ -236,7 +216,7 @@ def quat_to_ypr(q):
     roll  = math.atan2(2.0 * (q[0] * q[1] + q[2] * q[3]), q[0] * q[0] - q[1] * q[1] - q[2] * q[2] + q[3] * q[3])
     pitch *= 180.0 / math.pi
     yaw   *= 180.0 / math.pi
-    yaw   -= -0.13  # Declination at Chandrapur, Maharashtra is - 0 degress 13 min
+    yaw   -= 5.05  # Declination at Chandrapur, Maharashtra is - 0 degress 13 min
     roll  *= 180.0 / math.pi
     return [yaw, pitch, roll]
 
@@ -254,6 +234,10 @@ def quat_to_rot_mat(q):
     return np.array([[r00, r01, r02],
                     [r10, r11, r12],
                     [r20, r21, r22]])
+
+
+        
+
 
 if __name__ == '__main__':
     main()

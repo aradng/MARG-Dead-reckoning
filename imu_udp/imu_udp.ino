@@ -33,7 +33,7 @@ const char * password = "pepegaking98";
 /* Mpu6500 object */
 bfs::Mpu9250 imu;
 AsyncUDP udp;
-IPAddress remote_IP(192, 168, 0, 2);
+IPAddress remote_IP(192, 168, 1, 3);
 #define UDP_PORT 1234
 
 void setup() {
@@ -59,7 +59,7 @@ void setup() {
     while(1) {}
   }
   /* Set the sample rate divider */
-  if (!imu.sample_rate_divider(4)) {
+  if (!imu.ConfigSrd(4)) {
     Serial.println("Error in configuration of sample rate divider");
     while(1) {}
   }
@@ -70,7 +70,7 @@ void setup() {
 }
 
 float accel[3], gyro[3], mag[3];
-const int packet_div = 4;
+const int packet_div = 6;
 int counter = 0;
 char data[packet_div][100];
 char buff[packet_div*100];
