@@ -42,7 +42,7 @@ class Visulize:
             pygame.display.flip()
             self.frames += 1
             current.update({"frame_time": time.time() - current["frame_start"]})
-            # self.timings = pd.concat([self.timings, pd.Series(current)], axis=1, ignore_index=True)
+            # # self.timings = pd.concat([self.timings, pd.Series(current)], axis=1, ignore_index=True)
 
     def init(self):
         pygame.init()
@@ -129,7 +129,10 @@ class Visulize:
                     accel_s[i] = '-'
             self.drawText((1, -1.9, 2), f"x: {accel_s[0]}, y: {accel_s[1]}, z: {accel_s[2]}", 16)
         if self.pdr.filter.__class__.__name__ in ['Mahony', 'EKF']:
+            if self.pdr.filter.__class__.__name__ in ['Mahony', 'EKF']:
             glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, self.pdr.Q[1], 1 * self.pdr.Q[3], -1 * self.pdr.Q[2])
+        elif self.pdr.filter.__class__.__name__ == "Madgwick":
+            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, -1*self.pdr.Q[1], -1 * self.pdr.Q[3], 1 * self.pdr.Q[2])
         elif self.pdr.filter.__class__.__name__ == "Madgwick":
             glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, -1*self.pdr.Q[1], -1 * self.pdr.Q[3], 1 * self.pdr.Q[2])
         self.draw_box()
@@ -210,6 +213,7 @@ class Visulize:
         glEnd()
 
 from ahrs.filters import Mahony, Madgwick, EKF
+from ahrs.utils import WMM
 from ahrs.utils import WMM
 
 if __name__ == "__main__":
