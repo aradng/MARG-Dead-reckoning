@@ -62,8 +62,6 @@ class Visulize:
             self.running = False
             if len(self.pdr.data):
                 self.pdr.data.to_csv('data.csv')
-                self.timings *= 1000
-                self.timings.T.to_pickle('timings.pkl')
                 self.pdr.plot_path()
         if self.event.type == KEYDOWN and self.event.key == K_f:
             pygame.display.toggle_fullscreen()
@@ -86,9 +84,9 @@ class Visulize:
                 self.pdr.calibrate_accel()
                 self.calib_menu = False
         if self.event.type == KEYDOWN and self.event.key == K_UP:
-            self.pdr.gain = 0.5
+            self.pdr.filter.gain = 0.5
         if self.event.type == KEYDOWN and self.event.key == K_DOWN:
-            self.pdr.gain = 0.01
+            self.pdr.filter.gain = 0.01
         if self.event.type == KEYDOWN and self.event.key == K_BACKSPACE:
             self.pdr.lp = not self.pdr.lp
 
@@ -106,8 +104,8 @@ class Visulize:
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT)
         glLoadIdentity()
         glTranslatef(0, 0.0, -7.0)
-
-        self.drawText((-2.6, 1.8, 2), f"filter Module {str(self.pdr.filter.__class__).split('.')[2]}", 18)
+        self.drawText((-2.6, 1.8, 2), f"filter Module {str(self.pdr.filter.__class__).split('.')[2]}", 18)       
+        self.drawText((-2.6, 1.7, 2), f"PDR config gain {self.pdr.filter.gain if (self.pdr.filter.__class__.__name__ == 'Madgwick') else None} lp {self.pdr.lp}", 16)
         if not self.calib_menu:
             self.drawText((-2.6, -2, 2), "Press Escape to Exit , C to Calibrattion Settings, D to capture", 16)
         else:
@@ -129,12 +127,9 @@ class Visulize:
                     accel_s[i] = '-'
             self.drawText((1, -1.9, 2), f"x: {accel_s[0]}, y: {accel_s[1]}, z: {accel_s[2]}", 16)
         if self.pdr.filter.__class__.__name__ in ['Mahony', 'EKF']:
-            if self.pdr.filter.__class__.__name__ in ['Mahony', 'EKF']:
-            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, self.pdr.Q[1], 1 * self.pdr.Q[3], -1 * self.pdr.Q[2])
+            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi,      self.pdr.Q[1],  1 * self.pdr.Q[3], -1 * self.pdr.Q[2])
         elif self.pdr.filter.__class__.__name__ == "Madgwick":
-            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, -1*self.pdr.Q[1], -1 * self.pdr.Q[3], 1 * self.pdr.Q[2])
-        elif self.pdr.filter.__class__.__name__ == "Madgwick":
-            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, -1*self.pdr.Q[1], -1 * self.pdr.Q[3], 1 * self.pdr.Q[2])
+            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, -1 * self.pdr.Q[1], -1 * self.pdr.Q[3],  1 * self.pdr.Q[2])
         self.draw_box()
     
     @staticmethod
@@ -214,10 +209,9 @@ class Visulize:
 
 from ahrs.filters import Mahony, Madgwick, EKF
 from ahrs.utils import WMM
-from ahrs.utils import WMM
 
 if __name__ == "__main__":
-    pdr = PDR(lp=False, filter=Mahony, frequency=200)
+    pdr = PDR(lp=False, filter=Madgwick, frequency=200)
     wmm = WMM()
     # wmm.magnetic_field(35.74276511014527, 51.49721575854581, 1.1)
     ml = wmm.magnetic_elements

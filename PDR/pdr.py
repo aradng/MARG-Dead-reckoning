@@ -51,8 +51,7 @@ class PDR:
         self.calib_b = self.calib.loc['b', 'b']
         self.calib_A = self.calib.loc['A']
         
-        if lp:
-            self.lp_init(cutoff=cutoff, order=order, fs=frequency)
+        self.lp_init(cutoff=cutoff, order=order, fs=frequency)
         
         self.data = pd.DataFrame()
         self.capture = False
