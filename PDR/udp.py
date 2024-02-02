@@ -17,6 +17,7 @@ class UDP:
         self.formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
+        self.columns = ("time", ""), *tuple(itertools.product(["accel", "gyro", "mag"], ["x", "y", "z"]))
 
     def read(self):
         if self.single:
@@ -32,14 +33,16 @@ class UDP:
         try:
             for i in data:
                 i = i.split(",")
-                marg.append(float(i[j]) for j in range(9))
+                marg.append(float(i[j]) for j in range(10))
         except Exception as e:
             self.logger.error("Error in reading data")
             self.logger.error(i)
             self.logger.error(data)
             self.logger.error(len(data))
             raise e
-        marg = pd.DataFrame(marg, columns=tuple(itertools.product(["accel", "gyro", "mag"], ["x", "y", "z"])))
+        marg = pd.DataFrame(marg, columns=self.columns)
+        marg['time'] = marg['time'].astype(np.uint64)
+        marg.set_index('time', inplace=True)
         return marg
     
     def close(self):

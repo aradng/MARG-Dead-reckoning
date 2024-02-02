@@ -42,7 +42,7 @@ class Visulize:
             pygame.display.flip()
             self.frames += 1
             current.update({"frame_time": time.time() - current["frame_start"]})
-            self.timings = pd.concat([self.timings, pd.Series(current)], axis=1, ignore_index=True)
+            # self.timings = pd.concat([self.timings, pd.Series(current)], axis=1, ignore_index=True)
 
     def init(self):
         pygame.init()
@@ -62,8 +62,6 @@ class Visulize:
             self.running = False
             if len(self.pdr.data):
                 self.pdr.data.to_csv('data.csv')
-                self.pdr.data_f.to_csv('data_f.csv')
-                self.pdr.true_accel.to_csv('true_accel.csv')
                 self.timings *= 1000
                 self.timings.T.to_pickle('timings.pkl')
                 self.pdr.plot_path()
@@ -115,7 +113,7 @@ class Visulize:
         self.drawText((2, 1.8, 2) , f"Recording {'X' if self.capture else ' '}", 16, color=(0, 255, 0, 255) if self.capture else (255, 0, 0, 255))
         self.drawText((2,1.9,2), f"fps: {self.frames / ((pygame.time.get_ticks() - self.ticks) / 1000.0):.2f}", 16)
         if self.capture:
-            accel = self.pdr.rotation_matrix @ self.pdr.data['accel'].iloc[-1].to_numpy()
+            accel = self.pdr.quat_to_rot_mat(self.pdr.Q) @ self.pdr.data['accel'].iloc[-1].to_numpy()
             self.drawText((-2.6, -1.9, 2), f"Q accel : x: {accel[0]:.1f}, y: {accel[1]:.1f}, z: {accel[2]:.1f}", 16)
             accel_s = np.array(['0', '0', '0'])
             for i in range(len(accel)):
@@ -124,7 +122,10 @@ class Visulize:
                 elif accel[i] < -1:
                     accel_s[i] = '-'
             self.drawText((1, -1.9, 2), f"x: {accel_s[0]}, y: {accel_s[1]}, z: {accel_s[2]}", 16)
-        glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, self.pdr.Q[1], 1 * self.pdr.Q[3], -1 * self.pdr.Q[2])
+        if self.pdr.filter.__class__.__name__ in ['Mahony', 'EKF']:
+            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, self.pdr.Q[1], 1 * self.pdr.Q[3], -1 * self.pdr.Q[2])
+        elif self.pdr.filter.__class__.__name__ == "Madgwick":
+            glRotatef(2 * math.acos(self.pdr.Q[0]) * 180.00/math.pi, -1*self.pdr.Q[1], -1 * self.pdr.Q[3], 1 * self.pdr.Q[2])
         self.draw_box()
     
     @staticmethod
@@ -203,8 +204,14 @@ class Visulize:
         glEnd()
 
 from ahrs.filters import Mahony, Madgwick, EKF
+from ahrs.utils import WMM
 
 if __name__ == "__main__":
-    pdr = PDR(lp=True, filter=Mahony, frequency=200)
+    pdr = PDR(lp=False, filter=Mahony, frequency=200,)
+    wmm = WMM()
+    wmm.magnetic_field(35.74276511014527, 51.49721575854581, 1.1)
+    ml = wmm.magnetic_elements
+    pdr.filter = EKF(frequency=200, magnetic_ref=[ml['X'], ml['Y'], ml['Z']], noises=[0.000035, 0.0003, 0.5])
+    print(pdr.filter.noises)
     vis = Visulize(1280, 720, pdr)
     vis.run()

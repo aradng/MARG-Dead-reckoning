@@ -26,32 +26,43 @@
 #include "mpu9250.h"
 #include "WiFi.h"
 #include "AsyncUDP.h"
+#include <WiFiManager.h> // https://github.com/tzapu/WiFiManager
 
-const char * ssid = "Arad-PC";
-const char * password = "pepegaking98";
+//const char * ssid = "Arad-PC";
+//const char * password = "pepegaking98";
+WiFiManager wm; // global wm instance
 
-/* Mpu6500 object */
 bfs::Mpu9250 imu;
 AsyncUDP udp;
-IPAddress remote_IP(192, 168, 1, 3);
+//IPAddress remote_IP(192, 168, 1, 3);
 #define UDP_PORT 1234
 
 void setup() {
-  /* Serial to display data */
+  WiFi.mode(WIFI_STA); // explicitly set mode, esp defaults to STA+AP  
+  
   Serial.begin(115200);
-  while(!Serial) {}
-  WiFi.mode(WIFI_STA);
-    WiFi.begin(ssid, password);
-    if (WiFi.waitForConnectResult() != WL_CONNECTED) {
-        Serial.println("WiFi Failed");
-        while(1) {
-            delay(1000);
-        }
+  Serial.println(millis());
+  bool res = wm.autoConnect("IMU"); // password protected ap    
+  pinMode(LED_BUILTIN, OUTPUT);
+  digitalWrite(LED_BUILTIN, LOW);
+  
+  if(!res) {
+    Serial.println("Failed to connect");
+    for(int i=0; i < 10; i++)
+    {
+      digitalWrite(LED_BUILTIN, digitalRead(LED_BUILTIN));
+      delay(100);
     }
-  /* Start the I2C bus */
+    ESP.restart();
+  } 
+  else
+  {
+    digitalWrite(LED_BUILTIN, HIGH);
+    Serial.println(WiFi.localIP());
+  }
+  
   Wire.begin();
   Wire.setClock(400000);
-  /* I2C bus,  0x68 address */
   imu.Config(&Wire, bfs::Mpu9250::I2C_ADDR_PRIM);
   /* Initialize and configure IMU */
   if (!imu.Begin()) {
@@ -72,9 +83,8 @@ void setup() {
 float accel[3], gyro[3], mag[3];
 const int packet_div = 6;
 int counter = 0;
-char data[packet_div][100];
-char buff[packet_div*100];
-unsigned long long int t = millis();
+char data[packet_div][120];
+char buff[packet_div*120];
 
 void loop() {
   /* Check if data read */
@@ -89,10 +99,9 @@ void loop() {
     mag[0] = imu.mag_x_ut();
     mag[1] = imu.mag_y_ut();
     mag[2] = imu.mag_z_ut();
-    sprintf(data[counter], "%f,%f,%f,%f,%f,%f,%f,%f,%f\n", accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2], mag[0],mag[1],mag[2]);
+    sprintf(data[counter], "%llu,%f,%f,%f,%f,%f,%f,%f,%f,%f\n", millis(),accel[0], accel[1], accel[2], gyro[0], gyro[1], gyro[2], mag[0],mag[1],mag[2]);
     counter++;
   }
-  t = millis();
   if (counter >= packet_div)
   {
      counter = 0;

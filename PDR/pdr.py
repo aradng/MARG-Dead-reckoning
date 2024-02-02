@@ -10,7 +10,7 @@ import matplotlib.pyplot as plt
 from pyparsing import col
 import PDR.util as util
 from PDR.udp import UDP
-from calibrate import Calibrate, sampler
+from PDR.calibrate import Calibrate, sampler
 from scipy import signal
 
 import time
@@ -31,7 +31,7 @@ class PDR:
         self.norm = 55
         if lattitude and longitude:
             wmm = ahrs.utils.WMM()
-            wmm.get_field(lattitude, longitude, 0)['I']
+            wmm.magnetic_field(lattitude, longitude, 0)['I']
             self.norm = wmm.magnetic_elements['I']
             self.magnetic_declination = wmm.magnetic_elements['D']
         self.udp_init()
@@ -55,15 +55,12 @@ class PDR:
             self.lp_init(cutoff=cutoff, order=order, fs=frequency)
         
         self.data = pd.DataFrame()
-        self.true_accel = pd.DataFrame()
-        self.data_f = pd.DataFrame()
         self.capture = False
         
     def udp_init(self):
         self.udp = UDP()
 
     def lp_init(self, cutoff=5, order=10, fs=200):
-        print(order, cutoff, fs)
         b, a = signal.butter(order, cutoff, fs=fs, btype='lowpass', analog=False)
         self.lfilter = {col :util.LiveLFilter(b, a) for col in self.calib.columns}
 
@@ -72,27 +69,21 @@ class PDR:
         true_accel = np.array([])
         q = []
         data -= self.calib_b
-        data_f = []
         data['mag'] = (self.calib_A['mag'] @ data['mag'].T).T
         # data['accel'] = (self.calib_A['accel'] @ data['accel'].T).T
         if self.lp:
             data = data.agg(self.lfilter)
         for idx, v in data.iterrows():            
             self.Q = self.filter_update(self.Q, v['gyro'], v['accel'], v['mag'])
-            self.rotation_matrix = self.quat_to_rot_mat()
-            true_accel = np.append(true_accel, self.rotation_matrix @ v['accel'])
             q.append(self.Q)
-        data_f = pd.DataFrame(data_f, columns=data.columns, index=data.index)
-        data['q'] = q
+        data['Q'] = q
         if self.capture:
             self.data = pd.concat([self.data, data], axis=0)
-            self.data_f = pd.concat([self.data_f, data_f], axis=0)
-            self.true_accel = pd.concat([self.true_accel, pd.DataFrame(true_accel.reshape(-1, 3), columns=('x', 'y', 'z'))], axis=0)
 
         return self.Q
     
-    def quat_to_rot_mat(self):
-        q = self.Q
+    @staticmethod
+    def quat_to_rot_mat(q):
         r00 = 2 * (q[0] * q[0] + q[1] * q[1]) - 1
         r01 = 2 * (q[1] * q[2] - q[0] * q[3])
         r02 = 2 * (q[1] * q[3] + q[0] * q[2])
@@ -139,9 +130,12 @@ class PDR:
 
     def save_calib(self):
         self.calib.T.to_csv('calib.csv', sep='\t')
+        self.calib_b = self.calib.loc['b', 'b']
+        self.calib_A = self.calib.loc['A']
 
     def plot_path(self):
-        df = self.true_accel.copy()
+        df['qtrm'] = df['Q'].apply(self.quat_to_rot_mat)
+        df = df.apply(lambda x: x['qtrm'] @ x['accel'], axis=1).copy()
         # velocity
         df.columns = tuple(itertools.product(['accel'], ['x', 'y', 'z']))
         sf = df.shift(1).apply(lambda x: x * self.dt)
