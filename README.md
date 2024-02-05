@@ -76,7 +76,23 @@ The models were trained using a subset of the Oxford Inertial Odometry Dataset (
 
 The calibration process involves holding the board stationary and pressing "C" to calibrate gyro/acceleration. Pressing "D" records data and formats it to be acceptable for magnetometer calibration, stored in the calib folder. Ensure to input the magnetic declination for accurate heading.
 
-#### Results:
+## Results:
+
+### ZUPT Outputs
+
+#### Sensor Values and Ahrs Graphs
+
+![ypr.png](./imgs/handheld_male_rect/ypr.png)
+
+#### Zupt threshols and Step detection Graphs
+
+![path_64.png.png](./imgs/handheld_male_rect/path_61.png)
+
+#### final 2 dimentional constructed path
+
+![path.png](./imgs/handheld_male_rect/path2D_handheld_male_rect.png)
+
+### AHRS
 
 ![AHRS_demo.gif](./resources/AHRS_demo.gif)
 
