@@ -4,6 +4,7 @@ import numpy as np
 import pandas as pd
 import itertools
 
+
 class UDP:
     def __init__(self, port=1234, single=False):
         self.port = port
@@ -17,7 +18,9 @@ class UDP:
         self.formatter = logging.Formatter(
             "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
         )
-        self.columns = ("time", ""), *tuple(itertools.product(["accel", "gyro", "mag"], ["x", "y", "z"]))
+        self.columns = ("time", ""), *tuple(
+            itertools.product(["accel", "gyro", "mag"], ["x", "y", "z"])
+        )
 
     def read(self):
         if self.single:
@@ -33,7 +36,7 @@ class UDP:
         try:
             for i in data:
                 i = i.split(",")
-                marg.append(float(i[j]) for j in range(10))
+                marg.append(list(float(i[j]) for j in range(10)))
         except Exception as e:
             self.logger.error("Error in reading data")
             self.logger.error(i)
@@ -41,9 +44,8 @@ class UDP:
             self.logger.error(len(data))
             raise e
         marg = pd.DataFrame(marg, columns=self.columns)
-        marg['time'] = marg['time'].astype(np.uint64)
-        marg.set_index('time', inplace=True)
         return marg
-    
+        # return data
+
     def close(self):
         self.udp_socket.close()
